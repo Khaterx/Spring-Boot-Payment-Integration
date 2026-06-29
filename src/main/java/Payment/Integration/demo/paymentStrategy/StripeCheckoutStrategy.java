@@ -12,12 +12,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
+import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 
+import static reactor.core.publisher.Mono.just;
+
 @Slf4j
-@Component("STRIPE")
-public class StripeStrategy implements PaymentStrategy {
+@Component("STRIPE_CHECKOUT")
+public class StripeCheckoutStrategy implements PaymentStrategy {
 
     @Value("${stripe.secret.key}")
     private String stripeSecretKey;
@@ -34,7 +37,7 @@ public class StripeStrategy implements PaymentStrategy {
     private String cancelUrl;
 
     @Override
-    public PaymentCreateResponse createPayment(PaymentRequest request) {
+    public Mono<PaymentCreateResponse> createPayment(PaymentRequest request) {
         try {
             long amountInCents = convertToCents(request.getAmount());
 
@@ -64,10 +67,10 @@ public class StripeStrategy implements PaymentStrategy {
 
             log.info("Created Stripe Checkout Session: {}", session.getId());
 
-            return PaymentCreateResponse.builder()
+            return just(PaymentCreateResponse.builder()
                     .paymentId(session.getId())
                     .approvalUrl(session.getUrl())
-                    .build();
+                    .build());
 
         } catch (StripeException e) {
             log.error("Stripe checkout creation failed: {}", e.getMessage());
@@ -76,16 +79,16 @@ public class StripeStrategy implements PaymentStrategy {
     }
 
     @Override
-    public PaymentCaptureResponse capturePayment(String sessionId) {
+    public Mono<PaymentCaptureResponse> capturePayment(String sessionId) {
         try {
             Session session = Session.retrieve(sessionId);
 
             if ("complete".equals(session.getStatus())) {
                 log.info("Stripe Checkout Session completed: {}", session.getId());
-                return PaymentCaptureResponse.builder()
+                return just(PaymentCaptureResponse.builder()
                         .paymentId(session.getPaymentIntent())
                         .status("succeeded")
-                        .build();
+                        .build());
             } else {
                 throw new RuntimeException("Checkout session not completed. Status: " + session.getStatus());
             }

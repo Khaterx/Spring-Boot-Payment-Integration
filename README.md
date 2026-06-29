@@ -35,9 +35,10 @@ public interface PaymentStrategy {
 }
 ```
 
-**Example strategies:**
-- `PayPalStrategy`
-- `StripeStrategy` *(extensible)*
+**Strategies:**
+- `PayPalStrategy` — `@Component("PAYPAL")`
+- `StripeCheckoutStrategy` — `@Component("STRIPE_CHECKOUT")`
+- `StripeIntentStrategy` — `@Component("STRIPE_INTENT")`
 
 ---
 
@@ -47,11 +48,12 @@ public interface PaymentStrategy {
 |---|---|
 | Java 17+ | Core language |
 | Spring Boot | Application framework |
-| Spring WebClient (WebFlux) | Reactive HTTP client |
+| Spring WebClient (WebFlux) | Reactive HTTP client (PayPal) |
+| Stripe Java SDK | Synchronous SDK (Stripe) |
 | PayPal REST API (Sandbox) | Payment provider |
-| Stripe Java SDK | Payment provider |
+| Stripe API | Payment provider |
 | Lombok | Boilerplate reduction |
-| Records | Immutable DTOs |
+| PostgreSQL / H2 | Database (PostgreSQL prod, H2 test) |
 
 ---
 
@@ -63,7 +65,7 @@ public interface PaymentStrategy {
 POST /api/payments/{provider}/create
 ```
 
-**Supported providers:** `paypal`, `stripe`
+**Supported providers:** `PAYPAL`, `STRIPE_CHECKOUT`, `STRIPE_INTENT`
 
 **Example - PayPal:**
 
@@ -71,10 +73,16 @@ POST /api/payments/{provider}/create
 POST /api/payments/paypal/create
 ```
 
-**Example - Stripe:**
+**Example - Stripe Checkout:**
 
 ```http
-POST /api/payments/stripe/create
+POST /api/payments/STRIPE_CHECKOUT/create
+```
+
+**Example - Stripe Intent:**
+
+```http
+POST /api/payments/STRIPE_INTENT/create
 ```
 
 **Request Body:**
@@ -113,9 +121,14 @@ POST /api/payments/stripe/create
 POST /api/payments/paypal/capture/{orderId}
 ```
 
-**Stripe:**
+**Stripe Checkout:**
 ```http
-POST /api/payments/stripe/capture/{paymentIntentId}
+POST /api/payments/STRIPE_CHECKOUT/capture/{sessionId}
+```
+
+**Stripe Intent:**
+```http
+POST /api/payments/STRIPE_INTENT/capture/{paymentIntentId}
 ```
 
 **Response:**
@@ -172,13 +185,9 @@ GET http://localhost:8080/api/payments/paypal/capture?token=ORDER_ID
 
 ---
 
-## 🔄 Payment Flow
+## 🔄 Payment Flows
 
-```
-1. Create Order  →  Backend calls PayPal API
-2. User Approval →  User logs in to PayPal and approves
-3. Capture       →  Backend captures payment (money is transferred)
-```
+See [`FLOW.md`](FLOW.md) for complete architecture diagrams, sequence flows (PayPal, Stripe Checkout, Stripe Intent), and webhook data flow.
 
 ---
 
@@ -193,32 +202,28 @@ GET http://localhost:8080/api/payments/paypal/capture?token=ORDER_ID
 
 ---
 
-## 🚀 Extending the System (Adding Stripe)
+## 🚀 Extending with a New Provider
 
 To add a new payment provider:
 
-**1. Create a new strategy:**
+**1. Create a strategy class implementing `PaymentStrategy`:**
 
 ```java
-public class StripeStrategy implements PaymentStrategy {
-    // implement createPayment and capturePayment
+@Component("NEW_PROVIDER")
+public class NewProviderStrategy implements PaymentStrategy {
+    public Mono<PaymentCreateResponse> createPayment(PaymentRequest request) { ... }
+    public Mono<PaymentCaptureResponse> capturePayment(String paymentId) { ... }
 }
 ```
 
-**2. Register it in the factory:**
+**2. The `@Component("NEW_PROVIDER")` annotation auto-registers it in the factory**
 
-```java
-// In StrategyFactory
-case "stripe" -> new StripeStrategy(...);
-```
-
-**3. Call it via the unified endpoint:**
+No changes needed in `PaymentStrategyFactory`, `PaymentService`, or `PaymentController`. ✅
 
 ```http
-POST /api/payments/stripe/create
+POST /api/payments/NEW_PROVIDER/create
+POST /api/payments/NEW_PROVIDER/capture/{id}
 ```
-
-No changes needed in the controller or service layer. ✅
 
 ---
 
@@ -261,9 +266,9 @@ docker-compose up
 
 ## 🧩 Future Improvements
 
-- [x] Add full **Stripe** integration
-- [ ] Add **Webhooks** for production reliability
-- [ ] Add **Database** for payment tracking & idempotency
+- [x] Add full **Stripe** integration (Checkout + Intent)
+- [x] Add **Webhooks** for production reliability
+- [x] Add **Database** for payment tracking & idempotency
 - [ ] Add **Frontend** (React / Angular)
 
 ---
